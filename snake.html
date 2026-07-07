@@ -294,63 +294,100 @@
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    background: rgba(6, 6, 20, 0.9);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    gap: 10px;
+    background: rgba(6, 6, 20, 0.92);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
     transition: opacity 0.5s ease;
     z-index: 10;
   }
   #overlay::before {
-    content: ''; position: absolute; inset: 20%;
-    background: radial-gradient(ellipse at center, rgba(0,255,245,0.04) 0%, transparent 70%);
+    content: ''; position: absolute; inset: 15%;
+    background: radial-gradient(ellipse at center, rgba(0,255,245,0.05) 0%, transparent 70%);
     pointer-events: none;
   }
   #overlay.hidden { opacity: 0; pointer-events: none; }
+
+  .overlay-icon {
+    font-size: clamp(40px, 8vw, 64px);
+    line-height: 1;
+    position: relative; z-index: 1;
+    animation: overlayIconBounce 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @keyframes overlayIconBounce {
+    0% { transform: scale(0.3); opacity: 0; }
+    60% { transform: scale(1.1); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
   .overlay-title {
-    font-size: clamp(30px, 5vw, 52px);
+    font-size: clamp(26px, 4.5vw, 44px);
     font-weight: 900;
-    margin-bottom: 6px;
     text-align: center;
     position: relative; z-index: 1;
-    background: linear-gradient(90deg, var(--cyan), var(--pink));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    letter-spacing: 2px;
   }
-  .overlay-sub {
-    font-size: clamp(12px, 1.8vw, 16px);
-    color: rgba(255,255,255,0.5);
-    margin-bottom: 18px;
+
+  .overlay-detail {
+    font-size: clamp(11px, 1.5vw, 14px);
+    color: rgba(255,255,255,0.45);
     text-align: center;
     position: relative; z-index: 1;
+    letter-spacing: 1px;
   }
+
   .overlay-score {
-    font-size: clamp(18px, 3vw, 28px);
-    color: var(--gold);
-    text-shadow: 0 0 24px rgba(249,237,105,0.5);
-    margin-bottom: 18px;
+    font-size: clamp(16px, 2.5vw, 24px);
     font-weight: 700;
     text-align: center;
     position: relative; z-index: 1;
+    padding: 10px 24px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    letter-spacing: 1px;
   }
+  .overlay-score.win-score {
+    color: var(--gold);
+    text-shadow: 0 0 20px rgba(249,237,105,0.5);
+    border-color: rgba(249,237,105,0.2);
+    background: rgba(249,237,105,0.05);
+  }
+  .overlay-score.lose-score {
+    color: #ff6b7a;
+    text-shadow: 0 0 16px rgba(255,100,120,0.4);
+    border-color: rgba(255,100,120,0.15);
+    background: rgba(255,100,120,0.04);
+  }
+
   #btn {
-    padding: 12px 44px;
-    font-size: clamp(12px, 1.8vw, 15px);
+    padding: 11px 40px;
+    font-size: clamp(12px, 1.6vw, 14px);
     font-weight: 700;
     letter-spacing: 2px;
-    text-transform: uppercase;
     border: none;
     border-radius: 50px;
     cursor: pointer;
-    background: linear-gradient(135deg, var(--cyan), #0088ff);
     color: #060610;
-    box-shadow: 0 8px 28px rgba(0,255,245,0.3);
+    box-shadow: 0 8px 28px rgba(0,0,0,0.3);
     transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1.2);
     position: relative; z-index: 1;
   }
-  #btn:hover {
+  #btn.btn-retry {
+    background: linear-gradient(135deg, var(--cyan), #0088ff);
+    box-shadow: 0 8px 28px rgba(0,255,245,0.25);
+  }
+  #btn.btn-retry:hover {
     transform: translateY(-3px);
-    box-shadow: 0 14px 38px rgba(0,255,245,0.45);
+    box-shadow: 0 14px 36px rgba(0,255,245,0.4);
+  }
+  #btn.btn-win {
+    background: linear-gradient(135deg, #f9ed69, #ffa500);
+    box-shadow: 0 8px 28px rgba(249,237,105,0.3);
+  }
+  #btn.btn-win:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 36px rgba(249,237,105,0.45);
   }
   #btn:active { transform: translateY(0) scale(0.97); }
 
@@ -454,10 +491,11 @@
     <canvas id="game"></canvas>
     <div id="pause-indicator">⏸ 暂停</div>
     <div id="overlay">
+      <div class="overlay-icon" id="overlayIcon" style="display:none"></div>
       <div class="overlay-title" id="overlayTitle">🐍 贪吃蛇</div>
-      <div class="overlay-sub" id="overlaySub">准备好了吗？</div>
+      <div class="overlay-detail" id="overlayDetail" style="display:none"></div>
       <div class="overlay-score" id="overlayScore" style="display:none"></div>
-      <button id="btn" onclick="startGame()">开始游戏</button>
+      <button id="btn" class="btn-retry" onclick="startGame()">开始游戏</button>
     </div>
   </div>
   <div id="footer">
@@ -968,7 +1006,7 @@ function togglePause() {
   }
 }
 
-function endGame(win) {
+function endGame(win, reason) {
   running = false;
   gameOver = true;
   paused = false;
@@ -993,29 +1031,47 @@ function endGame(win) {
   if (musicGain && musicOn) musicGain.gain.setTargetAtTime(0.06, audioCtx.currentTime, 0.1);
 
   const overlay = document.getElementById('overlay');
+  const icon = document.getElementById('overlayIcon');
   const title = document.getElementById('overlayTitle');
-  const sub = document.getElementById('overlaySub');
+  const detail = document.getElementById('overlayDetail');
   const score = document.getElementById('overlayScore');
   const btn = document.getElementById('btn');
 
   if (win) {
-    title.textContent = '🎉 恭喜通关';
-    title.style.background = 'linear-gradient(90deg, #f9ed69, #ffcc00)';
+    icon.style.display = 'block';
+    icon.textContent = '🏆';
+    title.textContent = '恭喜通关';
+    title.style.background = 'linear-gradient(135deg, #f9ed69 0%, #ffa500 50%, #ff8c00 100%)';
     title.style.webkitBackgroundClip = 'text';
     title.style.backgroundClip = 'text';
     title.style.webkitTextFillColor = 'transparent';
-    sub.textContent = '你吃掉了所有的食物！太厉害了！';
+    detail.style.display = 'block';
+    detail.textContent = '所有食物已被消灭，你是最强的蛇！';
+    score.className = 'overlay-score win-score';
+    btn.className = 'btn-win';
+    btn.textContent = '再来一局';
   } else {
-    title.textContent = '💀 游戏结束';
-    title.style.background = 'linear-gradient(90deg, #ff2e63, #ff0055)';
+    icon.style.display = 'block';
+    icon.textContent = '💥';
+    title.textContent = '游戏结束';
+    title.style.background = 'linear-gradient(135deg, #ff4d6a 0%, #ff0033 50%, #cc0022 100%)';
     title.style.webkitBackgroundClip = 'text';
     title.style.backgroundClip = 'text';
     title.style.webkitTextFillColor = 'transparent';
-    sub.textContent = '撞到墙壁了，再试一次吧';
+    detail.style.display = 'block';
+    detail.textContent = reason || '撞到障碍物了';
+    score.className = 'overlay-score lose-score';
+    btn.className = 'btn-retry';
+    btn.textContent = '重新挑战';
   }
+
+  // 重新触发图标弹跳动画
+  icon.style.animation = 'none';
+  icon.offsetHeight; // force reflow
+  icon.style.animation = 'overlayIconBounce 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)';
+
   score.style.display = 'block';
-  score.textContent = '最终长度: ' + snake.length;
-  btn.textContent = '重新开始';
+  score.textContent = '🐍 最终长度 ' + snake.length;
   overlay.classList.remove('hidden');
 }
 
@@ -1106,7 +1162,7 @@ function update() {
 
         const onBody = snake.some((s, i) => i > 0 && s.x === nx && s.y === ny);
         if (onBody) {
-          endGame(false);
+          endGame(false, '穿墙后撞到了自己的身体');
           return;
         }
 
@@ -1115,7 +1171,7 @@ function update() {
         snake[0].y = ny;
         return;
       }
-      endGame(false);
+      endGame(false, '撞到边界了');
       return;
     }
   }
@@ -1134,7 +1190,7 @@ function update() {
       playShieldSFX();
       // 不结束游戏，蛇继续移动
     } else {
-      endGame(false);
+      endGame(false, '撞到自己了');
       return;
     }
   }
