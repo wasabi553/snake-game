@@ -28,14 +28,14 @@
     background: rgba(15, 15, 35, 0.6);
     backdrop-filter: blur(20px);
     border-radius: 24px;
-    padding: 20px;
+    padding: 12px 20px;
     box-shadow: 0 25px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
-    max-width: 96vw;
-    max-height: 96vh;
+    max-width: 98vw;
+    max-height: 98vh;
   }
   #header {
     text-align: center;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
     width: 100%;
     display: flex;
     align-items: center;
@@ -44,7 +44,7 @@
     flex-wrap: wrap;
   }
   #title {
-    font-size: clamp(24px, 5vw, 42px);
+    font-size: clamp(22px, 4.5vw, 38px);
     font-weight: 900;
     background: linear-gradient(90deg, #00fff5, #ff2e63, #f9ed69);
     -webkit-background-clip: text;
@@ -52,7 +52,7 @@
     background-clip: text;
     letter-spacing: 3px;
     text-transform: uppercase;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
   }
   #subtitle {
     font-size: clamp(10px, 1.5vw, 13px);
@@ -63,7 +63,7 @@
   #stats {
     display: flex;
     justify-content: space-around;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
     width: 100%;
     gap: 12px;
   }
@@ -93,7 +93,7 @@
   #controls {
     display: flex;
     gap: 10px;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
     flex-wrap: wrap;
     justify-content: center;
     align-items: center;
@@ -138,8 +138,8 @@
   #buff-bar {
     display: flex;
     gap: 10px;
-    margin-bottom: 8px;
-    min-height: 32px;
+    margin-bottom: 4px;
+    min-height: 28px;
     flex-wrap: wrap;
     justify-content: center;
   }
@@ -168,15 +168,11 @@
     border-radius: 12px;
     overflow: hidden;
     box-shadow: 0 0 40px rgba(0,255,245,0.1), 0 0 0 1px rgba(255,255,255,0.05);
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    line-height: 0;
   }
   canvas {
     display: block;
     background: #0a0a1a;
-    max-width: 90vw;
-    max-height: 70vh;
   }
   #overlay {
     position: absolute;
@@ -233,11 +229,11 @@
   #btn:active { transform: translateY(0); }
   #footer {
     text-align: center;
-    margin-top: 8px;
+    margin-top: 4px;
     font-size: clamp(10px, 1.5vw, 12px);
     color: rgba(255,255,255,0.25);
     letter-spacing: 1px;
-    line-height: 1.8;
+    line-height: 1.6;
   }
   .key {
     display: inline-block;
@@ -256,9 +252,11 @@
     position: absolute;
     top: 50%; left: 50%;
     transform: translate(-50%, -50%);
-    font-size: clamp(36px, 8vw, 72px);
+    font-size: clamp(28px, 6vw, 56px);
     font-weight: 900;
-    letter-spacing: 8px;
+    letter-spacing: 4px;
+    white-space: nowrap;
+    text-align: center;
     color: rgba(255,255,255,0.9);
     text-shadow: 0 0 40px rgba(255,193,7,0.8), 0 0 80px rgba(255,193,7,0.4);
     pointer-events: none;
@@ -350,6 +348,7 @@ let bgStars = [];
 let activeBuffs = {};
 let buffTimers = {};
 let buffStartTimes = {};
+let buffPausedRemaining = {};  // 暂停时保存剩余时间
 let toasts = [];
 let lastBuffUpdate = 0;
 let baseTick = 100;
@@ -662,11 +661,11 @@ function playShieldSFX() {
    ═══════════════════════════════════════════ */
 
 function resize() {
-  const maxW = window.innerWidth * 0.88;
-  const maxH = window.innerHeight * 0.55;
+  const maxW = window.innerWidth * 0.96;
+  const maxH = window.innerHeight * 0.72;
   const cellW = Math.floor(maxW / COLS);
   const cellH = Math.floor(maxH / ROWS);
-  CELL = Math.max(10, Math.min(cellW, cellH));
+  CELL = Math.max(12, Math.min(cellW, cellH));
   canvas.width = COLS * CELL;
   canvas.height = ROWS * CELL;
   initStars();
@@ -728,6 +727,7 @@ function startGame() {
   activeBuffs = {};
   buffTimers = {};
   buffStartTimes = {};
+  buffPausedRemaining = {};
   buffsSpawnedTotal = 0;
 
   let placed = 0;
@@ -771,16 +771,48 @@ function togglePause() {
   paused = !paused;
   const indicator = document.getElementById('pause-indicator');
   const pauseBtn = document.getElementById('pauseBtn');
+  const now = performance.now();
 
   if (paused) {
     indicator.style.display = 'block';
     pauseBtn.innerHTML = '<span class="icon">▶️</span> 继续';
+
+    // 暂停所有 Buff 计时器，保存剩余时间
+    for (const [id, active] of Object.entries(activeBuffs)) {
+      if (!active) continue;
+      const config = getBuffConfig(id);
+      const elapsed = now - (buffStartTimes[id] || now);
+      buffPausedRemaining[id] = Math.max(0, config.duration - elapsed);
+      if (buffTimers[id]) {
+        clearTimeout(buffTimers[id]);
+        delete buffTimers[id];
+      }
+    }
+
     // Lower music volume when paused
     if (musicGain && musicOn) musicGain.gain.setTargetAtTime(0.06, audioCtx.currentTime, 0.1);
   } else {
     indicator.style.display = 'none';
     pauseBtn.innerHTML = '<span class="icon">⏯️</span> 暂停';
-    lastTick = performance.now(); // prevent time-skip
+    lastTick = now; // prevent time-skip
+
+    // 恢复所有 Buff 计时器
+    for (const [id, active] of Object.entries(activeBuffs)) {
+      if (!active) continue;
+      const remaining = buffPausedRemaining[id];
+      if (remaining && remaining > 0) {
+        buffStartTimes[id] = now;
+        if (buffTimers[id]) clearTimeout(buffTimers[id]);
+        buffTimers[id] = setTimeout(() => {
+          activeBuffs[id] = false;
+          delete buffTimers[id];
+          delete buffStartTimes[id];
+          delete buffPausedRemaining[id];
+          updateBuffBar();
+        }, remaining);
+      }
+    }
+
     // Restore music volume
     if (musicGain && musicOn) musicGain.gain.setTargetAtTime(0.22, audioCtx.currentTime, 0.1);
   }
@@ -800,6 +832,7 @@ function endGame(win) {
   buffTimers = {};
   activeBuffs = {};
   buffStartTimes = {};
+  buffPausedRemaining = {};
   updateBuffBar();
   document.getElementById('remain').textContent = '0';
 
@@ -938,19 +971,20 @@ function update() {
   const selfCollision = snake.some((s, i) => i > 0 && s.x === nx && s.y === ny);
   if (selfCollision) {
     if (activeBuffs.shield) {
+      // 护盾抵挡一次自撞，蛇继续存活
       activeBuffs.shield = false;
       if (buffTimers.shield) clearTimeout(buffTimers.shield);
       delete buffTimers.shield;
       delete buffStartTimes.shield;
       updateBuffBar();
       addParticles(head.x, head.y, '#00c8ff', 15);
-      addToast(head.x, head.y, '护盾破碎', '#00c8ff');
+      addToast(head.x, head.y, '护盾抵挡', '#00c8ff');
       playShieldSFX();
+      // 不结束游戏，蛇继续移动
+    } else {
       endGame(false);
       return;
     }
-    endGame(false);
-    return;
   }
 
   prevPositions = snake.map(s => ({x: s.x, y: s.y}));
