@@ -531,6 +531,8 @@ let lastTick = performance.now();
 let gameOver = false;
 let running = false;
 let paused = false;
+let pausedAtTime = 0;
+let totalPausedDuration = 0;
 let snake = [];
 let direction = {x: 1, y: 0};
 let nextDirection = {x: 1, y: 0};
@@ -543,7 +545,6 @@ let bgStars = [];
 let activeBuffs = {};
 let buffTimers = {};
 let buffStartTimes = {};
-let buffPausedRemaining = {};  // 暂停时保存剩余时间
 let toasts = [];
 let lastBuffUpdate = 0;
 let baseTick = 100;
@@ -919,13 +920,14 @@ function startGame() {
   gameOver = false;
   running = true;
   paused = false;
+  pausedAtTime = 0;
+  totalPausedDuration = 0;
   particles = [];
   toasts = [];
   prevPositions = [];
   activeBuffs = {};
   buffTimers = {};
   buffStartTimes = {};
-  buffPausedRemaining = {};
   buffsSpawnedTotal = 0;
 
   let placed = 0;
@@ -980,42 +982,37 @@ function togglePause() {
   const now = performance.now();
 
   if (paused) {
+    pausedAtTime = now;
     indicator.style.display = 'block';
     pauseBtn.innerHTML = '<span class="icon">▶️</span> 继续';
 
-    // 暂停所有 Buff 计时器，保存剩余时间
+    // 清除所有 Buff 定时器（保留 buffStartTimes 不动）
+    for (const [id, timer] of Object.entries(buffTimers)) {
+      clearTimeout(timer);
+      delete buffTimers[id];
+    }
+
+    // Lower music volume
+    if (musicGain && musicOn) musicGain.gain.setTargetAtTime(0.06, audioCtx.currentTime, 0.1);
+  } else {
+    totalPausedDuration += now - pausedAtTime;
+    indicator.style.display = 'none';
+    pauseBtn.innerHTML = '<span class="icon">⏯️</span> 暂停';
+    lastTick = now;
+
+    // 用剩余的真正时间重建定时器
     for (const [id, active] of Object.entries(activeBuffs)) {
       if (!active) continue;
       const config = getBuffConfig(id);
-      const elapsed = now - (buffStartTimes[id] || now);
-      buffPausedRemaining[id] = Math.max(0, config.duration - elapsed);
-      if (buffTimers[id]) {
-        clearTimeout(buffTimers[id]);
-        delete buffTimers[id];
-      }
-    }
-
-    // Lower music volume when paused
-    if (musicGain && musicOn) musicGain.gain.setTargetAtTime(0.06, audioCtx.currentTime, 0.1);
-  } else {
-    indicator.style.display = 'none';
-    pauseBtn.innerHTML = '<span class="icon">⏯️</span> 暂停';
-    lastTick = now; // prevent time-skip
-
-    // 恢复所有 Buff 计时器
-    for (const [id, active] of Object.entries(activeBuffs)) {
-      if (!active) continue;
-      const remaining = buffPausedRemaining[id];
-      if (remaining && remaining > 0) {
-        buffStartTimes[id] = now;
-        if (buffTimers[id]) clearTimeout(buffTimers[id]);
+      const effectiveElapsed = now - (buffStartTimes[id] || now) - totalPausedDuration;
+      const realRemaining = Math.max(0, config.duration - effectiveElapsed);
+      if (realRemaining > 0) {
         buffTimers[id] = setTimeout(() => {
           activeBuffs[id] = false;
           delete buffTimers[id];
           delete buffStartTimes[id];
-          delete buffPausedRemaining[id];
           updateBuffBar();
-        }, remaining);
+        }, realRemaining);
       }
     }
 
@@ -1038,7 +1035,7 @@ function endGame(win, reason) {
   buffTimers = {};
   activeBuffs = {};
   buffStartTimes = {};
-  buffPausedRemaining = {};
+  totalPausedDuration = 0;
   updateBuffBar();
   document.getElementById('remain').textContent = '0';
 
@@ -1266,17 +1263,14 @@ function updateBuffBar() {
   const bar = document.getElementById('buff-bar');
   bar.innerHTML = '';
   const now = performance.now();
+  // 暂停中：自上次暂停起已过的现实时间不计算在内
+  const effectivePause = paused ? (now - pausedAtTime) : 0;
+  const totalOffset = totalPausedDuration + effectivePause;
   for (const [id, active] of Object.entries(activeBuffs)) {
     if (!active) continue;
     const config = getBuffConfig(id);
-    // 暂停状态下使用保存的剩余时间，而非流逝的现实时间
-    let remaining;
-    if (paused && buffPausedRemaining[id] !== undefined) {
-      remaining = Math.max(0, Math.ceil(buffPausedRemaining[id] / 1000));
-    } else {
-      const start = buffStartTimes[id] || now;
-      remaining = Math.max(0, Math.ceil((config.duration - (now - start)) / 1000));
-    }
+    const start = buffStartTimes[id] || now;
+    const remaining = Math.max(0, Math.ceil((config.duration - (now - start - totalOffset)) / 1000));
     const tag = document.createElement('div');
     tag.className = 'buff-tag ' + config.class;
     tag.textContent = config.name + ' ' + remaining + 's';
